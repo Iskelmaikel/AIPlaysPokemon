@@ -132,7 +132,7 @@ def main():
         try:
             logger.info("AI agent started - will keep playing until you stop it")
             while True:  # Run indefinitely
-                agent.run(num_steps=1)  # Process one step at a time
+                agent.run(num_steps=args.steps)  # Use the steps parameter from command line
                 time.sleep(0.1)  # Small delay to prevent CPU overuse
         except KeyboardInterrupt:
             logger.info("Received keyboard interrupt in AI thread, stopping")
