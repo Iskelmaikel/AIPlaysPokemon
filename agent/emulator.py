@@ -33,10 +33,15 @@ class Emulator:
 
     def initialize(self):
         """Initialize the emulator."""
-        # Run the emulator for a short time to make sure it's ready
-        self.pyboy.set_emulation_speed(0)
-        for _ in range(60):
-            self.tick(60)
+        # Run the emulator for a short time to make sure it's ready.
+        # First, fast-forward at ~240fps (4x) for ~2 seconds of game time,
+        # then drop back to normal ~60fps for interactive play.
+
+        # Fast-forward boot: 4x speed, ~2 seconds -> ~480 frames
+        self.pyboy.set_emulation_speed(4)
+        self.tick(1080)
+
+        # Normal interactive speed
         self.pyboy.set_emulation_speed(1)
 
     def get_screenshot(self):

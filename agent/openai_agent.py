@@ -126,7 +126,7 @@ class OpenAIAgent:
         return tools
 
     def _process_tool_call(self, tool_call):
-        """Process a single OpenAI tool_call and return content parts for a tool message."""
+        """Process a single OpenAI tool_call and return a text summary for a tool message."""
         name = tool_call.function.name
         try:
             arguments = json.loads(tool_call.function.arguments or "{}")
@@ -143,8 +143,9 @@ class OpenAIAgent:
 
             result = self.emulator.press_buttons(buttons, wait)
 
+            # We still capture screenshot for logging/debugging if needed
             screenshot = self.emulator.get_screenshot()
-            screenshot_b64 = get_screenshot_base64(screenshot, upscale=2)
+            _ = get_screenshot_base64(screenshot, upscale=2)
 
             memory_info = self.emulator.get_state_from_memory()
 
@@ -155,22 +156,11 @@ class OpenAIAgent:
             if collision_map:
                 logger.info(f"[Collision Map after action]\n{collision_map}")
 
-            # Return structured content similar to Anthropic's tool_result: text + image + text
-            return [
-                {
-                    "type": "text",
-                    "text": (
-                        f"Pressed buttons: {', '.join(buttons)}. Raw result from emulator:\n{result}\n\n"
-                        f"Game state after action:\n{memory_info}"
-                    ),
-                },
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/png;base64,{screenshot_b64}",
-                    },
-                },
-            ]
+            # Return plain text only, because OpenAI does not allow images in tool messages
+            return (
+                f"Pressed buttons: {', '.join(buttons)}. Raw result from emulator:\n{result}\n\n"
+                f"Game state after action:\n{memory_info}"
+            )
 
         if name == "navigate_to":
             row = arguments.get("row")
@@ -186,7 +176,7 @@ class OpenAIAgent:
                 result = f"Navigation failed: {status}"
 
             screenshot = self.emulator.get_screenshot()
-            screenshot_b64 = get_screenshot_base64(screenshot, upscale=2)
+            _ = get_screenshot_base64(screenshot, upscale=2)
             memory_info = self.emulator.get_state_from_memory()
 
             logger.info("[Memory State after navigation]")
@@ -196,29 +186,13 @@ class OpenAIAgent:
             if collision_map:
                 logger.info(f"[Collision Map after navigation]\n{collision_map}")
 
-            return [
-                {
-                    "type": "text",
-                    "text": (
-                        f"Navigation result: {result}\n\n"
-                        f"Game state after navigation:\n{memory_info}"
-                    ),
-                },
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/png;base64,{screenshot_b64}",
-                    },
-                },
-            ]
+            return (
+                f"Navigation result: {result}\n\n"
+                f"Game state after navigation:\n{memory_info}"
+            )
 
         logger.error(f"Unknown tool called: {name}")
-        return [
-            {
-                "type": "text",
-                "text": f"Error: Unknown tool '{name}'",
-            }
-        ]
+        return f"Error: Unknown tool '{name}'"
 
     def run(self, num_steps=1):
         """Main agent loop using OpenAI's chat.completions and tools."""
@@ -273,16 +247,11 @@ class OpenAIAgent:
                 self.message_history.append({"role": "user", "content": user_text})
                 self.message_history.append({"role": "assistant", "content": message.content or ""})
 
-                # Execute tools and add results as tool messages
+                # Execute tools, but do not persist tool messages in history.
+                # OpenAI expects tool messages only as immediate responses to tool_calls
+                # in the same request; keeping them in history causes 400 errors.
                 for tc in tool_calls:
-                    tool_content = self._process_tool_call(tc)
-                    self.message_history.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tc.id,
-                            "content": tool_content,
-                        }
-                    )
+                    _ = self._process_tool_call(tc)
 
                 # Summarize history if it grows too large
                 if len(self.message_history) >= self.max_history:
