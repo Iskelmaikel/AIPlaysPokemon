@@ -29,7 +29,7 @@ def main():
         "--steps", 
         type=int, 
         default=10, 
-        help="Number of agent steps to run"
+        help="Number of agent steps to run (not used in continuous mode)"
     )
     parser.add_argument(
         "--display", 
@@ -65,7 +65,7 @@ def main():
     
     # Get absolute path to ROM
     if not os.path.isabs(args.rom):
-        rom_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), args.rom)
+        rom_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), args.rom) 
     else:
         rom_path = args.rom
     
@@ -130,9 +130,10 @@ def main():
     # Now let the AI take over in a background thread
     def ai_loop():
         try:
-            logger.info(f"Starting agent for {args.steps} steps")
-            steps_completed = agent.run(num_steps=args.steps)
-            logger.info(f"Agent completed {steps_completed} steps")
+            logger.info("AI agent started - will keep playing until you stop it")
+            while True:  # Run indefinitely
+                agent.run(num_steps=1)  # Process one step at a time
+                time.sleep(0.1)  # Small delay to prevent CPU overuse
         except KeyboardInterrupt:
             logger.info("Received keyboard interrupt in AI thread, stopping")
         except Exception as e:
@@ -141,28 +142,31 @@ def main():
     ai_thread = threading.Thread(target=ai_loop, daemon=True)
     ai_thread.start()
 
-    # While the AI is running, keep ticking the emulator so the game continues updating
+    # Main loop to keep the emulator running and handle user input
     try:
-        # Reuse the same speed control variables from the manual phase
-        while ai_thread.is_alive():
+        print("\nAI is now playing. Press 'q' to quit or use speed controls (-/=)")
+        while True:
             agent.emulator.tick(frames_per_step)
-
-            # Allow speed control during AI play as well
+            
+            # Handle user input for controls
             if msvcrt.kbhit():
                 key = msvcrt.getch()
-                if key in (b"-",):
+                if key in (b"q", b"Q"):
+                    print("\nQuitting...")
+                    break
+                elif key in (b"-",):
                     print("\n[Speed] Setting emulator to ~60fps")
                     frames_per_step = 1
                     sleep_seconds = 1 / 60
-                elif key in (b"=", b"+",):
+                elif key in (b"=", b"+"):
                     print("\n[Speed] Setting emulator to ~300fps")
                     frames_per_step = 5
                     sleep_seconds = 1 / 60
-
+            
             time.sleep(sleep_seconds)
 
     except KeyboardInterrupt:
-        logger.info("Received keyboard interrupt while AI was running, stopping.")
+        logger.info("Received keyboard interrupt, stopping.")
     finally:
         agent.stop()
 
