@@ -5,4 +5,4 @@ MAX_TOKENS = 4000
 
 USE_NAVIGATOR = False
 
-OPENAI_MODEL = "gpt-4o-mini"
+OPENAI_MODEL = "gpt-4.1-mini"

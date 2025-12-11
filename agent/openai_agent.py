@@ -29,6 +29,8 @@ SYSTEM_PROMPT = """You are playing Pokemon Red. You can see the game screen and 
 
 Your goal is to play through Pokemon Red and eventually defeat the Elite Four. Make decisions based on what you see on the screen and the memory-based game state description.
 
+At the very beginning of the game, you may see boot or title/intro screens. In those cases, you often need to press START and/or A multiple times to get to a playable state (the main game where you can move the character around). If the game appears idle or you are not yet in control of the player, try pressing START or A to proceed.
+
 Before each action, explain your reasoning briefly, then use the available tools to execute your chosen commands.
 
 The conversation history may occasionally be summarized to save context space. If you see a message labeled "CONVERSATION HISTORY SUMMARY", this contains the key information about your progress so far. Use this information to maintain continuity in your gameplay."""
@@ -203,17 +205,30 @@ class OpenAIAgent:
             try:
                 messages = copy.deepcopy(self.message_history)
 
-                # Get current game state from memory for the user turn
+                # Get current screenshot and game state from memory for the user turn
+                screenshot = self.emulator.get_screenshot()
+                screenshot_b64 = get_screenshot_base64(screenshot, upscale=2)
                 memory_info = self.emulator.get_state_from_memory()
 
-                user_text = (
-                    "Here is the current game state from memory. "
-                    "Use the tools to decide what to do next.\n\n"
-                    f"GAME STATE:\n{memory_info}"
-                )
+                user_content = [
+                    {
+                        "type": "text",
+                        "text": (
+                            "Here is the current game state from memory and a screenshot of the game screen. "
+                            "Use the tools to decide what to do next.\n\n"
+                            f"GAME STATE:\n{memory_info}"
+                        ),
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{screenshot_b64}",
+                        },
+                    },
+                ]
 
                 messages.insert(0, {"role": "system", "content": SYSTEM_PROMPT})
-                messages.append({"role": "user", "content": user_text})
+                messages.append({"role": "user", "content": user_content})
 
                 response = self.client.chat.completions.create(
                     model=OPENAI_MODEL,
@@ -244,7 +259,7 @@ class OpenAIAgent:
                     logger.info(f"[Tool] Using tool: {tc.function.name}")
 
                 # Update history with this turn (keep structures close to SimpleAgent)
-                self.message_history.append({"role": "user", "content": user_text})
+                self.message_history.append({"role": "user", "content": user_content})
                 self.message_history.append({"role": "assistant", "content": message.content or ""})
 
                 # Execute tools, but do not persist tool messages in history.

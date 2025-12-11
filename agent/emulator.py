@@ -31,6 +31,10 @@ class Emulator:
         for _ in range(frames):
             self.pyboy.tick()
 
+    def set_speed(self, multiplier: float):
+        """Set the emulation speed multiplier (1.0 ~= 60fps, higher is faster)."""
+        self.pyboy.set_emulation_speed(multiplier)
+
     def initialize(self):
         """Initialize the emulator."""
         # Run the emulator for a short time to make sure it's ready.

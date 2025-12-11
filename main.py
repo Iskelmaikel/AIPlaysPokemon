@@ -1,6 +1,9 @@
 import argparse
 import logging
 import os
+import msvcrt
+import threading
+import time
 
 from agent.simple_agent import SimpleAgent
 from agent.openai_agent import OpenAIAgent
@@ -73,7 +76,7 @@ def main():
         print("Place the ROM in the root directory or specify its path with --rom.")
         return
     
-    # Create and run agent
+    # Create agent
     if args.provider == "openai":
         agent = OpenAIAgent(
             rom_path=rom_path,
@@ -91,14 +94,75 @@ def main():
             load_state=args.load_state,
         )
     
+    # Pre-AI manual phase: keep ticking the emulator and wait for NumPad 8
+    print("\nGame initialized. You can play manually now.")
+    print("When you want the AI to take over, press NumPad 8 (with NumLock on) in this console.")
+    # Control how many emulator frames we advance per loop (affects effective FPS)
+    frames_per_step = 1   # 1 frame per ~1/60s -> ~60fps
+    sleep_seconds = 1 / 60
+
     try:
-        logger.info(f"Starting agent for {args.steps} steps")
-        steps_completed = agent.run(num_steps=args.steps)
-        logger.info(f"Agent completed {steps_completed} steps")
+        while True:
+            # Advance some frames so the game keeps running
+            agent.emulator.tick(frames_per_step)
+
+            # Non-blocking check for NumPad 8 or speed controls in the console
+            if msvcrt.kbhit():
+                key = msvcrt.getch()
+                if key in (b"8",):
+                    break
+                elif key in (b"-",):
+                    print("\n[Speed] Setting emulator to ~60fps")
+                    frames_per_step = 1
+                    sleep_seconds = 1 / 60
+                elif key in (b"=", b"+",):
+                    print("\n[Speed] Setting emulator to ~300fps")
+                    frames_per_step = 5      # 5 * 60 ~= 300fps
+                    sleep_seconds = 1 / 60   # keep same wall-clock rate, more frames per tick
+
+            time.sleep(sleep_seconds)
+
     except KeyboardInterrupt:
-        logger.info("Received keyboard interrupt, stopping")
-    except Exception as e:
-        logger.error(f"Error running agent: {e}")
+        logger.info("Received keyboard interrupt during manual phase, exiting.")
+        agent.stop()
+        return
+
+    # Now let the AI take over in a background thread
+    def ai_loop():
+        try:
+            logger.info(f"Starting agent for {args.steps} steps")
+            steps_completed = agent.run(num_steps=args.steps)
+            logger.info(f"Agent completed {steps_completed} steps")
+        except KeyboardInterrupt:
+            logger.info("Received keyboard interrupt in AI thread, stopping")
+        except Exception as e:
+            logger.error(f"Error running agent: {e}")
+
+    ai_thread = threading.Thread(target=ai_loop, daemon=True)
+    ai_thread.start()
+
+    # While the AI is running, keep ticking the emulator so the game continues updating
+    try:
+        # Reuse the same speed control variables from the manual phase
+        while ai_thread.is_alive():
+            agent.emulator.tick(frames_per_step)
+
+            # Allow speed control during AI play as well
+            if msvcrt.kbhit():
+                key = msvcrt.getch()
+                if key in (b"-",):
+                    print("\n[Speed] Setting emulator to ~60fps")
+                    frames_per_step = 1
+                    sleep_seconds = 1 / 60
+                elif key in (b"=", b"+",):
+                    print("\n[Speed] Setting emulator to ~300fps")
+                    frames_per_step = 5
+                    sleep_seconds = 1 / 60
+
+            time.sleep(sleep_seconds)
+
+    except KeyboardInterrupt:
+        logger.info("Received keyboard interrupt while AI was running, stopping.")
     finally:
         agent.stop()
 
