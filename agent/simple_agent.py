@@ -4,6 +4,8 @@ import io
 import logging
 import os
 
+import pyttsx3
+
 from config import MAX_TOKENS, MODEL_NAME, TEMPERATURE, USE_NAVIGATOR
 
 from agent.emulator import Emulator
@@ -45,6 +47,16 @@ Please include:
 5. Any strategies or plans you've mentioned
 
 The summary should be comprehensive enough that you can continue gameplay without losing important context about what has happened so far."""
+
+TTS_SUMMARY_PROMPT = """I need you to create a brief, human-friendly summary of our Pokemon gameplay that would be good for text-to-speech.
+
+Please create a natural-sounding summary that includes:
+1. What I'm currently doing or trying to accomplish
+2. Any major achievements or progress made
+3. My current location or situation
+4. What my next plans are
+
+Write it in a conversational, first-person style as if you're explaining your Pokemon adventure to a friend. Keep it under 3-4 sentences and make it easy to understand when spoken aloud."""
 
 
 AVAILABLE_TOOLS = [
@@ -349,6 +361,31 @@ class SimpleAgent:
         
         logger.info(f"[Agent] Game Progress Summary:")
         logger.info(f"{summary_text}")
+        
+        # Generate TTS-friendly summary
+        tts_messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            *copy.deepcopy(self.message_history),
+            {"role": "user", "content": TTS_SUMMARY_PROMPT},
+        ]
+        
+        tts_response = self.client.messages.create(
+            model=MODEL_NAME,
+            max_tokens=MAX_TOKENS,
+            system=SYSTEM_PROMPT,
+            messages=tts_messages,
+            temperature=TEMPERATURE
+        )
+        
+        tts_summary = " ".join([block.text for block in tts_response.content if block.type == "text"])
+        
+        # Read TTS summary aloud
+        try:
+            engine = pyttsx3.init()
+            engine.say(tts_summary)
+            engine.runAndWait()
+        except Exception as e:
+            logger.warning(f"Text-to-speech failed: {e}")
         
         # Replace message history with just the summary
         self.message_history = [

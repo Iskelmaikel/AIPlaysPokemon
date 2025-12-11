@@ -4,6 +4,8 @@ import io
 import json
 import logging
 
+import pyttsx3
+
 from openai import OpenAI
 
 from agent.emulator import Emulator
@@ -46,6 +48,16 @@ Please include:
 5. Any strategies or plans you've mentioned
 
 The summary should be comprehensive enough that you can continue gameplay without losing important context about what has happened so far."""
+
+TTS_SUMMARY_PROMPT = """I need you to create a brief, human-friendly summary of our Pokemon gameplay that would be good for text-to-speech.
+
+Please create a natural-sounding summary that includes:
+1. What I'm currently doing or trying to accomplish
+2. Any major achievements or progress made
+3. My current location or situation
+4. What my next plans are
+
+Write it in a conversational, first-person style as if you're explaining your Pokemon adventure to a friend. Keep it under 3-4 sentences and make it easy to understand when spoken aloud."""
 
 
 AVAILABLE_TOOLS = [
@@ -324,6 +336,30 @@ class OpenAIAgent:
 
         logger.info("[OpenAI Agent] Game Progress Summary:")
         logger.info(summary_text)
+
+        # Generate TTS-friendly summary
+        tts_messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            *copy.deepcopy(self.message_history),
+            {"role": "user", "content": TTS_SUMMARY_PROMPT},
+        ]
+        
+        tts_response = self.client.chat.completions.create(
+            model=OPENAI_MODEL,
+            temperature=TEMPERATURE,
+            max_tokens=MAX_TOKENS,
+            messages=tts_messages,
+        )
+        
+        tts_summary = tts_response.choices[0].message.content or ""
+
+        # Read TTS summary aloud
+        try:
+            engine = pyttsx3.init()
+            engine.say(tts_summary)
+            engine.runAndWait()
+        except Exception as e:
+            logger.warning(f"Text-to-speech failed: {e}")
 
         # Replace history with a single user message composed of text + image, similar to SimpleAgent
         self.message_history = [
