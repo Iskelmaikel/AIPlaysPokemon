@@ -25,11 +25,56 @@ class Emulator:
                 cgb=True,
                 sound=sound,
             )
+        self._button_queue = []  # Queue for button presses
+        self._button_timer = 0
+        self._current_button = None
+        self._button_release_timer = 0
+        self._button_wait_timer = 0
+        self._button_state = "idle"  # idle, pressing, holding, releasing, waiting
 
     def tick(self, frames):
         """Advance the emulator by the specified number of frames."""
         for _ in range(frames):
+            # Handle button press state machine
+            if self._button_state != "idle":
+                self._handle_button_state()
+                
+            # Tick the emulator
             self.pyboy.tick()
+            
+    def _handle_button_state(self):
+        """Handle the button press state machine."""
+        if self._button_state == "pressing":
+            self._button_timer -= 1
+            if self._button_timer <= 0:
+                self._button_state = "holding"
+                self._button_timer = 2  # Hold for 2 frames
+                
+        elif self._button_state == "holding":
+            self._button_timer -= 1
+            if self._button_timer <= 0:
+                self.pyboy.button_release(self._current_button)
+                self._button_state = "releasing"
+                self._button_timer = 1  # Release for 1 frame
+                
+        elif self._button_state == "releasing":
+            self._button_timer -= 1
+            if self._button_timer <= 0:
+                self._button_state = "waiting"
+                self._button_wait_timer = 30  # Wait for 30 frames after release
+                
+        elif self._button_state == "waiting":
+            self._button_wait_timer -= 1
+            if self._button_wait_timer <= 0:
+                # Check if there are more buttons in the queue
+                if self._button_queue:
+                    self._button_state = "pressing"
+                    self._current_button = self._button_queue.pop(0)
+                    self._button_timer = 3  # Press for 3 frames
+                    self.pyboy.button_press(self._current_button)
+                else:
+                    self._button_state = "idle"
+                    self._current_button = None
 
     def set_speed(self, multiplier: float):
         """Set the emulation speed multiplier (1.0 ~= 60fps, higher is faster)."""
@@ -63,34 +108,33 @@ class Emulator:
         self.pyboy.load_state(open(state_filename, "rb"))
 
     def press_buttons(self, buttons, wait=True):
-        """Press a sequence of buttons on the Game Boy.
+        """Queue a sequence of buttons to be pressed on the Game Boy.
         
         Args:
-            buttons (list[str]): List of buttons to press in sequence
+            buttons (list[str] or str): Single button or list of buttons to press in sequence
             wait (bool): Whether to wait after each button press
             
         Returns:
-            str: Result of the button presses
+            str: Status message
         """
-        results = []
-        
+        if isinstance(buttons, str):
+            buttons = [buttons]
+            
         for button in buttons:
             if button not in ["a", "b", "start", "select", "up", "down", "left", "right"]:
-                results.append(f"Invalid button: {button}")
-                continue
+                return f"Invalid button: {button}"
                 
-            self.pyboy.button_press(button)
-            self.tick(10)   # Press briefly
-            self.pyboy.button_release(button)
-            
-            if wait:
-                self.tick(120) # Wait longer after button release
-            else:
-                self.tick(10)   # Brief pause between button presses
-                
-            results.append(f"Pressed {button}")
+        # Add to queue and reset timers if queue was empty
+        was_empty = len(self._button_queue) == 0
+        self._button_queue.extend(buttons)
         
-        return "\n".join(results)
+        if was_empty and self._button_state == "idle":
+            self._button_state = "pressing"
+            self._current_button = self._button_queue.pop(0)
+            self._button_timer = 3  # Press for 3 frames
+            self.pyboy.button_press(self._current_button)
+            
+        return f"Queued buttons: {', '.join(buttons)}"
 
     def get_coordinates(self):
         """

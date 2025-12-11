@@ -140,29 +140,42 @@ class OpenAIAgent:
 
         if name == "press_buttons":
             buttons = arguments.get("buttons", [])
-            wait = arguments.get("wait", True)
+            wait = arguments.get("wait", True)  # Default to True for better game state updates
             logger.info(f"[Buttons] Pressing: {buttons} (wait={wait})")
 
-            result = self.emulator.press_buttons(buttons, wait)
-
-            # We still capture screenshot for logging/debugging if needed
-            screenshot = self.emulator.get_screenshot()
-            _ = get_screenshot_base64(screenshot, upscale=2)
-
-            memory_info = self.emulator.get_state_from_memory()
-
-            logger.info("[Memory State after action]")
-            logger.info(memory_info)
-
-            collision_map = self.emulator.get_collision_map()
-            if collision_map:
-                logger.info(f"[Collision Map after action]\n{collision_map}")
-
-            # Return plain text only, because OpenAI does not allow images in tool messages
-            return (
-                f"Pressed buttons: {', '.join(buttons)}. Raw result from emulator:\n{result}\n\n"
-                f"Game state after action:\n{memory_info}"
-            )
+            try:
+                # Process the button presses
+                result = self.emulator.press_buttons(buttons, wait)
+                
+                # Get the current game state after the button press
+                memory_info = self.emulator.get_state_from_memory()
+                location = self.emulator.get_location() or "Unknown location"
+                dialog = self.emulator.get_active_dialog() or ""
+                
+                # Log the state for debugging
+                logger.info("[Memory State after action]")
+                logger.info(memory_info)
+                
+                collision_map = self.emulator.get_collision_map()
+                if collision_map:
+                    logger.info(f"[Collision Map after action]\n{collision_map}")
+                
+                # Build a detailed response
+                response_parts = [
+                    f"Action: Pressed buttons: {', '.join(buttons)}",
+                    f"Location: {location}",
+                ]
+                
+                if dialog:
+                    response_parts.append(f"Dialog: {dialog}")
+                
+                response_parts.append(f"Game State:\n{memory_info}")
+                
+                return "\n".join(response_parts)
+                
+            except Exception as e:
+                logger.error(f"Error processing button press: {e}")
+                return f"Error processing button press: {str(e)}"
 
         if name == "navigate_to":
             row = arguments.get("row")
