@@ -3,6 +3,7 @@ import logging
 import os
 
 from agent.simple_agent import SimpleAgent
+from agent.openai_agent import OpenAIAgent
 
 # Set up logging
 logging.basicConfig(
@@ -14,7 +15,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def main():
-    parser = argparse.ArgumentParser(description="Claude Plays Pokemon - Starter Version")
+    parser = argparse.ArgumentParser(description="AI Plays Pokemon - Starter Version")
     parser.add_argument(
         "--rom", 
         type=str, 
@@ -49,6 +50,13 @@ def main():
         default=None, 
         help="Path to a saved state to load"
     )
+    parser.add_argument(
+        "--provider",
+        type=str,
+        choices=["anthropic", "openai"],
+        default="anthropic",
+        help="Which AI provider to use: 'anthropic' (Claude) or 'openai'"
+    )
     
     args = parser.parse_args()
     
@@ -66,13 +74,22 @@ def main():
         return
     
     # Create and run agent
-    agent = SimpleAgent(
-        rom_path=rom_path,
-        headless=not args.display,
-        sound=args.sound if args.display else False,
-        max_history=args.max_history,
-        load_state=args.load_state,
-    )
+    if args.provider == "openai":
+        agent = OpenAIAgent(
+            rom_path=rom_path,
+            headless=not args.display,
+            sound=args.sound if args.display else False,
+            max_history=args.max_history,
+            load_state=args.load_state,
+        )
+    else:
+        agent = SimpleAgent(
+            rom_path=rom_path,
+            headless=not args.display,
+            sound=args.sound if args.display else False,
+            max_history=args.max_history,
+            load_state=args.load_state,
+        )
     
     try:
         logger.info(f"Starting agent for {args.steps} steps")

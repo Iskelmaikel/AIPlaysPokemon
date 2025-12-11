@@ -4,3 +4,5 @@ TEMPERATURE = 1.0
 MAX_TOKENS = 4000
 
 USE_NAVIGATOR = False
+
+OPENAI_MODEL = "gpt-4o-mini"
